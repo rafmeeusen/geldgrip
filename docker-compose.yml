@@ -1,0 +1,13 @@
+services:
+  budget-planner:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - budget-data:/data
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=sqlite:////data/budget.db
+
+volumes:
+  budget-data:

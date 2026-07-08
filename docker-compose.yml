@@ -2,7 +2,7 @@ services:
   budget-planner:
     build: .
     ports:
-      - "8000:8000"
+      - "8084:8000"
     volumes:
       - budget-data:/data
     restart: unless-stopped

@@ -44,6 +44,25 @@ Three items below, written up in enough detail to implement together in one rewo
 - New endpoint: `POST /api/transactions/bulk-categorize` — `{ids: [...], category_id: int}`. Nothing today bulk-applies an explicit category to an arbitrary id list (`approve-all` only accepts whatever's already suggested, scoped by month).
 - PATCH/approve response should include `similar_pending: [{id, description, amount}]` so the frontend can render the banner without an extra round-trip.
 
-**Open questions to confirm before building:**
-- Should "similar pending" search include transactions that already have a *different* suggested category (classifier guessed wrong), or only unsuggested ones? Leaning: include all pending regardless of current suggestion, since correcting stale/wrong suggestions is the point.
-- Where does the "Apply to all" banner live in the UI — inline right above/below the row just categorized, or a toast/banner at the top of the page?
+**Decided:**
+- "Similar pending" search includes all pending transactions with the matching counterparty, regardless of their current suggestion — not just unsuggested ones.
+- If a matched sibling already had a **different** `suggested_category_id` than the one about to be applied (classifier previously guessed a different category for it), don't silently overwrite it as part of the bulk action — flag it distinctly, e.g. included in the banner/bulk-categorize response as a separate `conflicting` sub-list, and/or a warning marker shown on that transaction's row ("previously suggested: {other category}") so it doesn't get lost in a one-click bulk apply. Expected to be rare in practice — the user's workflow is to approve/correct in small batches, so pending siblings rarely already carry a conflicting stale suggestion — but cheap to handle correctly since the query already has the data.
+
+**Interaction with item 4 (stage → commit rework, below):** applying a category to matched siblings should *stage* them (`category_id` set, `is_approved` left false) rather than approve them outright. They land in the new "Ready to commit" section for a final look, not as an irreversible one-click bulk-approve. This also resolves the conflicting-suggestion case above cleanly: a flagged sibling just sits in "Ready to commit" with its warning marker until the user looks at it and either commits or fixes it — no separate banner UI needed.
+
+## 4. Rework review queue into stage → batch commit (replaces "approve all")
+
+**Problem:** "approve all" (`crud.approve_all`, `POST /api/transactions/approve-all`, frontend `approveAll()` in Transactions.jsx:91-94/146) blindly accepts whatever `suggested_category_id` currently sits on every unapproved transaction, ignoring `suggested_confidence` entirely — a 36%-confidence guess gets approved exactly like a 98%-confidence one, with zero per-transaction review.
+
+**Decided UX:** remove "approve all" outright. Replace it with an explicit two-step stage → commit pattern:
+- The data model already supports a third state that's currently unused: `category_id` set but `is_approved = False` — "reviewed, not yet committed." No schema change needed.
+- Reviewing a transaction — clicking ✓ to accept the suggestion, or manually picking a category via Edit — now only sets `category_id` (PATCH without `is_approved`). This *stages* the row; it does not commit it.
+- The queue gets a new top section, **"Ready to commit (N)"**: every transaction with `category_id` set and `is_approved = False`, with a single **Approve/Commit** button that batch-approves exactly that set (new endpoint, no ids needed since it just commits whatever's currently staged — 1:1 with what's shown on screen).
+- Below it, **"Needs review"** keeps only untouched transactions (`category_id IS NULL`).
+- Workflow: review a handful → hit commit → repeat, as many times as needed until the queue is empty. Matches how the user actually wants to work — small verified batches, not one global accept-everything button.
+
+**Architecture:**
+- Remove: `crud.approve_all`, `POST /api/transactions/approve-all`, frontend `approveAll()` / `S.approveAll`.
+- Repurpose the single-row `/api/transactions/{id}/approve` endpoint away: accepting a suggestion becomes "PATCH `category_id = suggested_category_id`" (stage), same code path as manual categorization. The only thing that flips `is_approved` is the new batch-commit endpoint.
+- New endpoint: `POST /api/transactions/commit-reviewed` → `UPDATE transactions SET is_approved = true WHERE category_id IS NOT NULL AND is_approved = False`, then one `categorizer.learn(db)` call (and a `predict_bulk(db)` per item 3's fix).
+- Frontend: split the `pending` array into `staged` (`category_id` set) and `untouched` (`category_id` null); add the "Ready to commit" section + its Approve button above "Needs review".

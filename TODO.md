@@ -66,3 +66,17 @@ Three items below, written up in enough detail to implement together in one rewo
 - Repurpose the single-row `/api/transactions/{id}/approve` endpoint away: accepting a suggestion becomes "PATCH `category_id = suggested_category_id`" (stage), same code path as manual categorization. The only thing that flips `is_approved` is the new batch-commit endpoint.
 - New endpoint: `POST /api/transactions/commit-reviewed` → `UPDATE transactions SET is_approved = true WHERE category_id IS NOT NULL AND is_approved = False`, then one `categorizer.learn(db)` call (and a `predict_bulk(db)` per item 3's fix).
 - Frontend: split the `pending` array into `staged` (`category_id` set) and `untouched` (`category_id` null); add the "Ready to commit" section + its Approve button above "Needs review".
+
+## 5. Default categories: replace hardcoded Python list with a text file (same format as item 2's backup)
+
+**Problem:** default categories are hardcoded as a Python list — `DEFAULTS` in `seed.py:10-25`, 14 `(name, color)` tuples, `icon` always `"tag"`. Changing the starter set means editing code, not data. (Separately: the "+ New category" button (`POST /api/categories`) is unrelated to this list — it inserts straight into the `categories` table, so this item only concerns the *initial* seed set, not category creation in general.)
+
+**Decided:** don't invent a new file format for this — reuse item 2's backup JSON shape. Concretely:
+- Ship a default categories file in the repo, e.g. `backend/categories.default.json`, shaped exactly like the `categories` portion of a backup export: `{"format_version": 1, "categories": [{"name", "color", "icon"}, ...]}` (no `transactions` key, or an empty one).
+- `seed.py` reads that file instead of the Python literal and inserts-if-missing by name, same idempotent behavior as today — just swap the hardcoded list for a file read.
+- Because it's the same shape as a full backup, **a real backup taken from a previous install can be used directly to initialize a fresh install** — same parser, same code path for "seed" and "restore," nothing separate to maintain. This is the actual goal: fresh-install init and backup-restore become the same operation.
+
+**Architecture:**
+- Depends on item 2's backup format being defined first (categories referenced by name, `format_version` field) — implement in that order, this item builds directly on it.
+- `seed.py` becomes: locate a categories/backup JSON file (env var override pointing at a user-supplied backup, falling back to the bundled `categories.default.json`) → parse the `categories` array → insert-if-missing by name.
+- If a full backup (with `transactions` populated) is pointed at during fresh install, the same loader should be able to restore transactions too — not just categories — making this the general "restore" path, with "seed defaults on fresh install" as just the special case where only `categories` is present.

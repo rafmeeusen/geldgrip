@@ -1,6 +1,6 @@
 # TODO
 
-Three items below, written up in enough detail to implement together in one rework pass. Each has: problem, decided UX/format, architecture notes, and open questions still to confirm.
+Items below, written up in enough detail to implement together in one rework pass. Each has: problem, decided UX/format, architecture notes, and open questions still to confirm.
 
 ## 1. Warn when CSV rows are dropped during import
 
@@ -33,15 +33,15 @@ Three items below, written up in enough detail to implement together in one rewo
 
 **UX (decided):**
 - Exact counterparty match only — no fuzzy matching. Most transactions are recurring known shops, fuzzy isn't needed here.
-- Triggers after: manual categorize (PATCH with `category_id`) and single approve. Does **not** trigger after "approve all" (already a bulk action — would spam banners).
+- Triggers after: manual categorize (PATCH with `category_id`) and accepting a suggestion (✓) — both of which, per item 4, are staging actions (they set `category_id`, not `is_approved`). Not relevant to item 4's batch-commit action itself, since committing never touches `category_id`.
 - Search scope: other pending (`is_approved == False`) transactions with the same normalized counterparty, across **all months**, not just whatever month filter is currently selected — the whole point is catching siblings from a multi-month import.
 - If matches exist: inline banner in the queue — "N other transactions from {counterparty} found — apply '{category}' to all?" with **Apply to all** / **Dismiss**.
-  - *Apply to all*: bulk-sets `category_id` + `is_approved = true` on those ids, one `learn()` call afterward (not per-transaction).
+  - *Apply to all*: bulk-sets `category_id` only on those ids (`is_approved` left false — they land in "Ready to commit," see item 4), one `learn()` call afterward (not per-transaction).
   - *Dismiss*: banner closes, no bulk action — but those transactions' `suggested_category_id` should still refresh (via `predict_bulk`) so the dropdown is pre-filled next time they're reviewed individually.
 
 **Architecture:**
 - Fix the underlying staleness bug first: call `categorizer.predict_bulk(db)` after `categorizer.learn(db)` in the PATCH and approve endpoints (main.py:55, 64) — currently missing entirely.
-- New endpoint: `POST /api/transactions/bulk-categorize` — `{ids: [...], category_id: int}`. Nothing today bulk-applies an explicit category to an arbitrary id list (`approve-all` only accepts whatever's already suggested, scoped by month).
+- New endpoint: `POST /api/transactions/bulk-categorize` — `{ids: [...], category_id: int}`, sets `category_id` only. Nothing today bulk-applies an explicit category to an arbitrary id list.
 - PATCH/approve response should include `similar_pending: [{id, description, amount}]` so the frontend can render the banner without an extra round-trip.
 
 **Decided:**

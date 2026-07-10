@@ -72,7 +72,7 @@ def _fingerprint(row: dict) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def parse_kbc_csv(content: bytes) -> list[dict]:
+def parse_kbc_csv(content: bytes) -> tuple[list[dict], list[dict]]:
     # Decode
     for encoding in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
         try:
@@ -102,6 +102,7 @@ def parse_kbc_csv(content: bytes) -> list[dict]:
             header_map[h] = internal
 
     transactions = []
+    dropped = []
     for row in reader:
         mapped: dict = {}
         for raw_h, internal in header_map.items():
@@ -109,19 +110,23 @@ def parse_kbc_csv(content: bytes) -> list[dict]:
             mapped[internal] = val
 
         if not mapped.get("amount") or not mapped.get("date"):
+            dropped.append({"reason": "missing_amount_or_date", "raw_row": dict(row)})
             continue
 
         try:
             amount = _parse_amount(mapped["amount"])
         except (ValueError, KeyError):
+            dropped.append({"reason": "unparseable_amount", "raw_row": dict(row)})
             continue
 
         if amount == 0.0:
+            dropped.append({"reason": "zero_amount", "raw_row": dict(row)})
             continue
 
         try:
             date = _parse_date(mapped["date"])
         except ValueError:
+            dropped.append({"reason": "unparseable_date", "raw_row": dict(row)})
             continue
 
         parts = []
@@ -153,4 +158,4 @@ def parse_kbc_csv(content: bytes) -> list[dict]:
         record["fingerprint"] = _fingerprint(record)
         transactions.append(record)
 
-    return transactions
+    return transactions, dropped

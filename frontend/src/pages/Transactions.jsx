@@ -23,7 +23,7 @@ const S = {
     letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10,
   },
   badge: { background: '#FAEEDA', color: '#633806', fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 500, textTransform: 'none', letterSpacing: 0 },
-  approveAll: { marginLeft: 'auto', fontSize: 11, color: '#0F6E56', cursor: 'pointer', textTransform: 'none', letterSpacing: 0, fontWeight: 500 },
+  commitBtn: { marginLeft: 'auto', fontSize: 12, padding: '5px 12px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontWeight: 500, textTransform: 'none', letterSpacing: 0 },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 24 },
   th: { textAlign: 'left', padding: '6px 10px', color: '#888780', fontWeight: 500, fontSize: 11, borderBottom: '0.5px solid #e0dfd8' },
   td: { padding: '10px 10px', borderBottom: '0.5px solid #e0dfd8', verticalAlign: 'middle' },
@@ -42,6 +42,23 @@ const S = {
   },
   filterRow: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { padding: '6px 10px', borderRadius: 7, border: '0.5px solid #d3d1c7', fontSize: 13, background: '#fff' },
+  warnBanner: {
+    background: '#FDEEEA', border: '0.5px solid #F0C4B4', borderRadius: 10,
+    padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#8A3B1E',
+  },
+  warnHead: { display: 'flex', alignItems: 'center', gap: 10 },
+  warnToggle: { marginLeft: 'auto', fontSize: 12, color: '#8A3B1E', cursor: 'pointer', textDecoration: 'underline', background: 'none', border: 'none', padding: 0 },
+  warnDismiss: { fontSize: 12, color: '#8A3B1E', cursor: 'pointer', background: 'none', border: 'none', padding: 0 },
+  warnRows: { marginTop: 10, fontSize: 12, fontFamily: 'ui-monospace, monospace', maxHeight: 160, overflowY: 'auto', background: '#fff', borderRadius: 6, padding: '8px 10px' },
+  similarBanner: {
+    background: '#E9F5F0', border: '0.5px solid #B7DFCE', borderRadius: 10,
+    padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#0F6E56',
+    display: 'flex', alignItems: 'center', gap: 10,
+  },
+  similarActions: { marginLeft: 'auto', display: 'flex', gap: 8 },
+  applyBtn: { fontSize: 12, padding: '5px 12px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontWeight: 500 },
+  dismissBtn: { fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '0.5px solid #B7DFCE', background: '#fff', color: '#0F6E56', cursor: 'pointer' },
+  conflictWarn: { fontSize: 11, color: '#A32D2D', marginTop: 2 },
 }
 
 function fmt(amount) {
@@ -52,17 +69,27 @@ function fmtDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })
 }
 
-export default function Transactions({ onPendingChange }) {
+const REASON_LABELS = {
+  missing_amount_or_date: 'missing amount or date',
+  unparseable_amount: 'unreadable amount',
+  zero_amount: 'zero amount',
+  unparseable_date: 'unreadable date',
+}
+
+export default function Transactions({ onPendingChange, uploadResult, onDismissUploadResult }) {
   const [txs, setTxs] = useState([])
   const [stats, setStats] = useState({ income: 0, expenses: 0, balance: 0, pending: 0 })
   const [categories, setCategories] = useState([])
   const [month, setMonth] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [similarBanner, setSimilarBanner] = useState(null)
+  const [conflicts, setConflicts] = useState({})
+  const [droppedExpanded, setDroppedExpanded] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const params = {}
+    const params = { is_approved: false }
     if (month) params.month = month
     const [txData, statsData, cats] = await Promise.all([
       api.getTransactions(params),
@@ -83,26 +110,53 @@ export default function Transactions({ onPendingChange }) {
     return () => window.removeEventListener('refresh-transactions', handler)
   }, [load])
 
-  async function approve(tx) {
-    await api.approveTransaction(tx.id)
-    await load()
+  function handleSimilar(tx) {
+    if (tx.similar_pending && tx.similar_pending.length > 0) {
+      setSimilarBanner({
+        forTxId: tx.id,
+        categoryId: tx.category_id,
+        categoryName: tx.category?.name,
+        counterparty: tx.counterparty,
+        matches: tx.similar_pending,
+      })
+    }
   }
 
-  async function approveAll() {
-    await api.approveAll(month)
+  async function acceptSuggestion(tx) {
+    const updated = await api.acceptSuggestion(tx.id)
+    handleSimilar(updated)
     await load()
   }
 
   async function setCategory(txId, catId) {
-    await api.updateTransaction(txId, { category_id: catId, is_approved: true })
+    const updated = await api.updateTransaction(txId, { category_id: catId })
     setEditingId(null)
+    handleSimilar(updated)
     await load()
   }
 
-  const pending = txs.filter(t => !t.is_approved)
-  const approved = txs.filter(t => t.is_approved)
+  async function applyToAll() {
+    if (!similarBanner) return
+    const ids = similarBanner.matches.map(m => m.id)
+    const result = await api.bulkCategorize(ids, similarBanner.categoryId)
+    const newConflicts = {}
+    for (const t of result.conflicting) {
+      newConflicts[t.id] = t.suggested_category?.name || 'another category'
+    }
+    setConflicts(prev => ({ ...prev, ...newConflicts }))
+    setSimilarBanner(null)
+    await load()
+  }
 
-  // Generate month options from transactions
+  async function commitReviewed() {
+    await api.commitReviewed()
+    setConflicts({})
+    await load()
+  }
+
+  const ready = txs.filter(t => t.category_id)
+  const needsReview = txs.filter(t => !t.category_id)
+
   const months = [...new Set(txs.map(t => t.date.slice(0, 7)))].sort().reverse()
 
   return (
@@ -137,68 +191,35 @@ export default function Transactions({ onPendingChange }) {
       </div>
 
       <div style={S.scroll}>
-        {loading && <div style={{ color: '#888780', fontSize: 13, padding: '20px 0' }}>Loading…</div>}
-
-        {!loading && pending.length > 0 && (
-          <>
-            <div style={S.sectionHead}>
-              Needs review <span style={S.badge}>{pending.length} pending</span>
-              <span style={S.approveAll} onClick={approveAll}>Approve all</span>
+        {uploadResult && uploadResult.dropped > 0 && (
+          <div style={S.warnBanner}>
+            <div style={S.warnHead}>
+              <span>⚠ {uploadResult.dropped} row{uploadResult.dropped === 1 ? '' : 's'} couldn't be imported
+                {' '}({Object.entries(uploadResult.dropped_reasons).map(([r, n]) => `${n} ${REASON_LABELS[r] || r}`).join(', ')})
+              </span>
+              <button style={S.warnToggle} onClick={() => setDroppedExpanded(x => !x)}>
+                {droppedExpanded ? 'Hide rows' : 'Show rows'}
+              </button>
+              <button style={S.warnDismiss} onClick={onDismissUploadResult}>Dismiss</button>
             </div>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={S.th}>Date</th>
-                  <th style={S.th}>Description</th>
-                  <th style={S.th}>Amount</th>
-                  <th style={S.th}>Suggested category</th>
-                  <th style={S.th}>Confidence</th>
-                  <th style={S.th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pending.map(tx => (
-                  <tr key={tx.id} style={S.pendingRow}>
-                    <td style={{ ...S.td, color: '#888780', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtDate(tx.date)}</td>
-                    <td style={S.td}>
-                      <div style={S.desc}>{tx.description}</div>
-                      {tx.counterparty && <div style={S.descSub}>{tx.counterparty}</div>}
-                    </td>
-                    <td style={{ ...S.td, ...(tx.amount < 0 ? S.amountNeg : S.amountPos), whiteSpace: 'nowrap' }}>
-                      {fmt(tx.amount)}
-                    </td>
-                    <td style={S.td}>
-                      {editingId === tx.id ? (
-                        <CategoryPicker
-                          categories={categories}
-                          value={tx.category_id || tx.suggested_category_id}
-                          onChange={catId => setCategory(tx.id, catId)}
-                          onClose={() => setEditingId(null)}
-                        />
-                      ) : (
-                        <CategoryChip
-                          cat={tx.suggested_category || tx.category}
-                          pending={!tx.category_id}
-                        />
-                      )}
-                    </td>
-                    <td style={S.td}>
-                      <ConfidenceBadge value={tx.suggested_confidence} />
-                    </td>
-                    <td style={S.td}>
-                      <button style={S.approveBtn} onClick={() => approve(tx)}>✓</button>
-                      <button style={S.actionBtn} onClick={() => setEditingId(editingId === tx.id ? null : tx.id)}>Edit</button>
-                    </td>
-                  </tr>
+            {droppedExpanded && (
+              <div style={S.warnRows}>
+                {uploadResult.dropped_rows.map((d, i) => (
+                  <div key={i}>[{d.reason}] {JSON.stringify(d.raw_row)}</div>
                 ))}
-              </tbody>
-            </table>
-          </>
+              </div>
+            )}
+          </div>
         )}
 
-        {!loading && approved.length > 0 && (
+        {loading && <div style={{ color: '#888780', fontSize: 13, padding: '20px 0' }}>Loading…</div>}
+
+        {!loading && ready.length > 0 && (
           <>
-            <div style={S.sectionHead}>Categorized</div>
+            <div style={S.sectionHead}>
+              Ready to commit <span style={S.badge}>{ready.length}</span>
+              <button style={S.commitBtn} onClick={commitReviewed}>Approve</button>
+            </div>
             <table style={S.table}>
               <thead>
                 <tr>
@@ -210,7 +231,7 @@ export default function Transactions({ onPendingChange }) {
                 </tr>
               </thead>
               <tbody>
-                {approved.map(tx => (
+                {ready.map(tx => (
                   <tr key={tx.id}>
                     <td style={{ ...S.td, color: '#888780', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtDate(tx.date)}</td>
                     <td style={S.td}>
@@ -242,10 +263,83 @@ export default function Transactions({ onPendingChange }) {
           </>
         )}
 
-        {!loading && txs.length === 0 && (
+        {similarBanner && (
+          <div style={S.similarBanner}>
+            <span>
+              {similarBanner.matches.length} other pending transaction{similarBanner.matches.length === 1 ? '' : 's'} from
+              {' '}<strong>{similarBanner.counterparty}</strong> — apply <strong>{similarBanner.categoryName}</strong> to all of them too?
+            </span>
+            <div style={S.similarActions}>
+              <button style={S.applyBtn} onClick={applyToAll}>Apply to all</button>
+              <button style={S.dismissBtn} onClick={() => setSimilarBanner(null)}>Dismiss</button>
+            </div>
+          </div>
+        )}
+
+        {!loading && needsReview.length > 0 && (
+          <>
+            <div style={S.sectionHead}>
+              Needs review <span style={S.badge}>{needsReview.length} pending</span>
+            </div>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.th}>Date</th>
+                  <th style={S.th}>Description</th>
+                  <th style={S.th}>Amount</th>
+                  <th style={S.th}>Suggested category</th>
+                  <th style={S.th}>Confidence</th>
+                  <th style={S.th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {needsReview.map(tx => (
+                  <tr key={tx.id} style={S.pendingRow}>
+                    <td style={{ ...S.td, color: '#888780', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtDate(tx.date)}</td>
+                    <td style={S.td}>
+                      <div style={S.desc}>{tx.description}</div>
+                      {tx.counterparty && <div style={S.descSub}>{tx.counterparty}</div>}
+                      {conflicts[tx.id] && (
+                        <div style={S.conflictWarn}>⚠ previously suggested: {conflicts[tx.id]}</div>
+                      )}
+                    </td>
+                    <td style={{ ...S.td, ...(tx.amount < 0 ? S.amountNeg : S.amountPos), whiteSpace: 'nowrap' }}>
+                      {fmt(tx.amount)}
+                    </td>
+                    <td style={S.td}>
+                      {editingId === tx.id ? (
+                        <CategoryPicker
+                          categories={categories}
+                          value={tx.suggested_category_id}
+                          onChange={catId => setCategory(tx.id, catId)}
+                          onClose={() => setEditingId(null)}
+                        />
+                      ) : (
+                        <CategoryChip cat={tx.suggested_category} pending />
+                      )}
+                    </td>
+                    <td style={S.td}>
+                      <ConfidenceBadge value={tx.suggested_confidence} />
+                    </td>
+                    <td style={S.td}>
+                      <button
+                        style={{ ...S.approveBtn, ...(tx.suggested_category_id ? {} : { opacity: 0.4, cursor: 'not-allowed' }) }}
+                        onClick={() => acceptSuggestion(tx)}
+                        disabled={!tx.suggested_category_id}
+                      >✓</button>
+                      <button style={S.actionBtn} onClick={() => setEditingId(editingId === tx.id ? null : tx.id)}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {!loading && txs.length === 0 && !(uploadResult && uploadResult.dropped > 0) && (
           <div style={{ textAlign: 'center', padding: '60px 0', color: '#888780' }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>↑</div>
-            <div style={{ fontSize: 14 }}>Upload a KBC CSV file to get started</div>
+            <div style={{ fontSize: 14 }}>Nothing to review — upload a KBC CSV file to get started</div>
           </div>
         )}
       </div>

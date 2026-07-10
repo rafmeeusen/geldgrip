@@ -22,10 +22,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }),
-  approveTransaction: (id) =>
+  acceptSuggestion: (id) =>
     req(`/transactions/${id}/approve`, { method: 'POST' }),
-  approveAll: (month) =>
-    req(`/transactions/approve-all${month ? '?month=' + month : ''}`, { method: 'POST' }),
+  bulkCategorize: (ids, categoryId) =>
+    req('/transactions/bulk-categorize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, category_id: categoryId }),
+    }),
+  commitReviewed: () =>
+    req('/transactions/commit-reviewed', { method: 'POST' }),
 
   // Upload
   uploadCSV: (file) => {
@@ -49,4 +55,25 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteCategory: (id) => req(`/categories/${id}`, { method: 'DELETE' }),
+
+  // Admin: backup / restore / clear
+  downloadBackup: async () => {
+    const res = await fetch(`${BASE}/backup`)
+    if (!res.ok) throw new Error('Backup download failed')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'geldgrip-backup.json'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+  restoreBackup: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return req('/admin/restore', { method: 'POST', body: fd })
+  },
+  clearAll: () => req('/admin/clear', { method: 'POST' }),
 }

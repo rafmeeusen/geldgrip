@@ -7,9 +7,9 @@ const PRESET_COLORS = [
 ]
 
 const S = {
-  page: { padding: '28px 28px', overflowY: 'auto', height: '100%' },
+  page: { maxWidth: 720 },
   header: { display: 'flex', alignItems: 'center', marginBottom: 24 },
-  title: { fontSize: 15, fontWeight: 500, flex: 1 },
+  title: { fontSize: 12, fontWeight: 500, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 },
   addBtn: { background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 },
   card: { background: '#fff', border: '0.5px solid #e0dfd8', borderRadius: 12, padding: '16px 18px' },

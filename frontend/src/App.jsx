@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import Transactions from './pages/Transactions.jsx'
-import Categories from './pages/Categories.jsx'
+import Settings from './pages/Settings.jsx'
 import Reports from './pages/Reports.jsx'
 import Upload from './components/Upload.jsx'
 import { api } from './api/client.js'
@@ -45,6 +45,7 @@ function AppInner() {
   const [showUpload, setShowUpload] = useState(false)
   const [toast, setToast] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [uploadResult, setUploadResult] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -59,7 +60,8 @@ function AppInner() {
   function handleUploaded(result) {
     setShowUpload(false)
     showToast(`Imported ${result.added} transactions (${result.skipped} duplicates skipped)`)
-    navigate('/')
+    setUploadResult(result)
+    navigate('/transactions')
     window.dispatchEvent(new Event('refresh-transactions'))
   }
 
@@ -69,6 +71,9 @@ function AppInner() {
         <div style={S.logo}>budget<span style={{ color: '#1D9E75' }}>.</span></div>
         <nav style={S.nav}>
           <NavLink to="/" end style={({ isActive }) => ({ ...S.navLink, ...(isActive ? S.navActive : {}) })}>
+            <Dot color="#D85A30" /> Reports
+          </NavLink>
+          <NavLink to="/transactions" style={({ isActive }) => ({ ...S.navLink, ...(isActive ? S.navActive : {}) })}>
             <Dot color="#1D9E75" /> Transactions
             {pendingCount > 0 && (
               <span style={{ marginLeft: 'auto', fontSize: 11, background: '#FAEEDA', color: '#633806', padding: '1px 7px', borderRadius: 10, fontWeight: 500 }}>
@@ -76,11 +81,8 @@ function AppInner() {
               </span>
             )}
           </NavLink>
-          <NavLink to="/categories" style={({ isActive }) => ({ ...S.navLink, ...(isActive ? S.navActive : {}) })}>
-            <Dot color="#378ADD" /> Categories
-          </NavLink>
-          <NavLink to="/reports" style={({ isActive }) => ({ ...S.navLink, ...(isActive ? S.navActive : {}) })}>
-            <Dot color="#D85A30" /> Reports
+          <NavLink to="/settings" style={({ isActive }) => ({ ...S.navLink, ...(isActive ? S.navActive : {}) })}>
+            <Dot color="#378ADD" /> Settings
           </NavLink>
         </nav>
         <div style={S.footer}>
@@ -90,9 +92,18 @@ function AppInner() {
 
       <main style={S.main}>
         <Routes>
-          <Route path="/" element={<Transactions onPendingChange={setPendingCount} />} />
-          <Route path="/categories" element={<Categories />} />
-          <Route path="/reports" element={<Reports />} />
+          <Route path="/" element={<Reports />} />
+          <Route
+            path="/transactions"
+            element={
+              <Transactions
+                onPendingChange={setPendingCount}
+                uploadResult={uploadResult}
+                onDismissUploadResult={() => setUploadResult(null)}
+              />
+            }
+          />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
 

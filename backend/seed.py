@@ -1,37 +1,28 @@
 """
-Run once to seed default categories into the database.
+Run on every backend startup. Seeds default categories (or a user-supplied
+backup, via SEED_BACKUP_FILE) into an empty database. No-ops if categories
+already exist.
 Usage: python seed.py
 """
+import json
+import os
+
 from database import SessionLocal, engine
 import models
+from backup import restore_backup
 
 models.Base.metadata.create_all(bind=engine)
 
-DEFAULTS = [
-    ("Groceries",      "#1D9E75"),
-    ("Restaurants",    "#D85A30"),
-    ("Transport",      "#378ADD"),
-    ("Housing",        "#7F77DD"),
-    ("Health",         "#D4537E"),
-    ("Utilities",      "#888780"),
-    ("Shopping",       "#BA7517"),
-    ("Entertainment",  "#E24B4A"),
-    ("Income",         "#639922"),
-    ("Savings",        "#0F6E56"),
-    ("Insurance",      "#5F5E5A"),
-    ("Education",      "#185FA5"),
-    ("Travel",         "#EF9F27"),
-    ("Personal care",  "#993556"),
-]
+DEFAULT_FILE = os.path.join(os.path.dirname(__file__), "categories.default.json")
+SEED_FILE = os.environ.get("SEED_BACKUP_FILE", DEFAULT_FILE)
 
 db = SessionLocal()
-for name, color in DEFAULTS:
-    exists = db.query(models.Category).filter(models.Category.name == name).first()
-    if not exists:
-        db.add(models.Category(name=name, color=color, icon="tag"))
-        print(f"  + {name}")
-    else:
-        print(f"  ~ {name} (already exists)")
-db.commit()
+if db.query(models.Category).first() is not None:
+    print("Categories already exist, skipping seed.")
+else:
+    with open(SEED_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    restore_backup(db, data)
+    print(f"Seeded categories from {SEED_FILE}")
 db.close()
 print("Done.")

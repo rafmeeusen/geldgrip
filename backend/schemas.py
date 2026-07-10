@@ -33,7 +33,15 @@ class TransactionBase(BaseModel):
 class TransactionUpdate(BaseModel):
     category_id: int | None = None
     description: str | None = None
-    is_approved: bool | None = None
+
+
+class SimilarTransaction(BaseModel):
+    id: int
+    description: str
+    amount: float
+
+    class Config:
+        from_attributes = True
 
 
 class Transaction(TransactionBase):
@@ -52,7 +60,33 @@ class Transaction(TransactionBase):
         from_attributes = True
 
 
+class TransactionWithSimilar(Transaction):
+    similar_pending: list[SimilarTransaction] = []
+
+
+class DroppedRow(BaseModel):
+    reason: str
+    raw_row: dict
+
+
 class UploadResult(BaseModel):
     added: int
     skipped: int
     filename: str
+    dropped: int
+    dropped_reasons: dict[str, int]
+    dropped_rows: list[DroppedRow]
+
+
+class BulkCategorizeRequest(BaseModel):
+    ids: list[int]
+    category_id: int
+
+
+class BulkCategorizeResult(BaseModel):
+    applied: list[Transaction]
+    conflicting: list[Transaction]
+
+
+class CommitReviewedResult(BaseModel):
+    committed: int

@@ -1,19 +1,19 @@
 {
   "format_version": 1,
   "categories": [
-    { "name": "Groceries",     "color": "#1D9E75", "icon": "tag" },
-    { "name": "Restaurants",   "color": "#D85A30", "icon": "tag" },
+    { "name": "Energie",     "color": "#1D9E75", "icon": "tag" },
+    { "name": "Restaurant",   "color": "#D85A30", "icon": "tag" },
     { "name": "Transport",     "color": "#378ADD", "icon": "tag" },
-    { "name": "Housing",       "color": "#7F77DD", "icon": "tag" },
-    { "name": "Health",        "color": "#D4537E", "icon": "tag" },
+    { "name": "Wonen",       "color": "#7F77DD", "icon": "tag" },
+    { "name": "Gezondheid",        "color": "#D4537E", "icon": "tag" },
     { "name": "Utilities",     "color": "#888780", "icon": "tag" },
     { "name": "Shopping",      "color": "#BA7517", "icon": "tag" },
     { "name": "Entertainment", "color": "#E24B4A", "icon": "tag" },
     { "name": "Income",        "color": "#639922", "icon": "tag" },
     { "name": "Savings",       "color": "#0F6E56", "icon": "tag" },
-    { "name": "Insurance",     "color": "#5F5E5A", "icon": "tag" },
+    { "name": "Verzekeringen",     "color": "#5F5E5A", "icon": "tag" },
     { "name": "Education",     "color": "#185FA5", "icon": "tag" },
-    { "name": "Travel",        "color": "#EF9F27", "icon": "tag" },
+    { "name": "Reizen",        "color": "#EF9F27", "icon": "tag" },
     { "name": "Personal care", "color": "#993556", "icon": "tag" }
   ]
 }
